@@ -1,0 +1,58 @@
+name: Nightly Housekeeping (stub)
+
+on:
+  schedule:
+    # 05:00 UTC daily
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Log actions only (always true in POC)
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  housekeeping:
+    name: Curation re-check / stale / unused cleanup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stub housekeeping tasks
+        env:
+          DRY_RUN: "true"
+          STALE_DAYS: "14"
+          UNUSED_DAYS: "90"
+        run: |
+          set -euo pipefail
+          {
+            echo "## Nightly housekeeping (POC stub)"
+            echo ""
+            echo "This job is a skeleton for Phase 3. No live Artifactory, registry, or ARC changes are made."
+            echo ""
+            echo "### Planned tasks"
+            echo ""
+            echo "1. **Re-check awaiting curation** — scan open requests; if the package is now in Artifactory, resume from the Artifactory check step."
+            echo "2. **Auto-close stale requests** — close requests awaiting curation for more than ${STALE_DAYS} days."
+            echo "3. **Unused custom images** — find images/scale sets unused for ${UNUSED_DAYS} days, notify AppID owner, then remove."
+            echo ""
+            echo "| Setting | Value |"
+            echo "|---------|-------|"
+            echo "| dry_run | \`${DRY_RUN}\` |"
+            echo "| stale_timeout_days | ${STALE_DAYS} |"
+            echo "| unused_retention_days | ${UNUSED_DAYS} |"
+            echo ""
+            echo "### Dry-run log"
+            echo ""
+            echo "- Would load open request state (not persisted in POC)."
+            echo "- Would call Artifactory fixture/API for each awaiting_curation item."
+            echo "- Would emit ServiceNow stubs for stale closes."
+            echo "- Would list mock registry tags older than ${UNUSED_DAYS} days."
+            echo ""
+            echo "Housekeeping stub **completed** (no mutations)."
+          } | tee -a "$GITHUB_STEP_SUMMARY"

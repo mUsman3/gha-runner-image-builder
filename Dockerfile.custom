@@ -1,0 +1,60 @@
+# Custom AppID runner image.
+# In production, replace BASE_IMAGE with the pinned Platform Engineering golden image tag.
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
+
+ARG ECOSYSTEM=pip
+ARG PACKAGE_NAME=requests
+ARG PACKAGE_VERSION=2.31.0
+ARG APP_ID=APP-0000
+ARG REQUEST_ID=unknown
+
+LABEL org.company.appid="${APP_ID}" \
+      org.company.request_id="${REQUEST_ID}" \
+      org.company.package="${ECOSYSTEM}/${PACKAGE_NAME}@${PACKAGE_VERSION}" \
+      org.company.image_type="custom-runner"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    RUNNER_APP_ID=${APP_ID} \
+    RUNNER_PACKAGE="${ECOSYSTEM}/${PACKAGE_NAME}@${PACKAGE_VERSION}"
+
+# POC installs tooling from Ubuntu archives. Production must install only from Artifactory.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Offline-friendly install: record the curated package on the image and install
+# ecosystem tooling. Real package bits would come from Artifactory mirrors.
+RUN set -eux; \
+    mkdir -p /opt/runner-deps; \
+    echo "${ECOSYSTEM}/${PACKAGE_NAME}@${PACKAGE_VERSION}" > /opt/runner-deps/installed.txt; \
+    case "${ECOSYSTEM}" in \
+      pip) \
+        apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && rm -rf /var/lib/apt/lists/*; \
+        printf '%s==%s\n' "${PACKAGE_NAME}" "${PACKAGE_VERSION}" > /opt/runner-deps/requirements.txt; \
+        # POC: do not hit PyPI; mark as curated/present for demo images.
+        echo "curated-from-artifactory: ${PACKAGE_NAME}==${PACKAGE_VERSION}" >> /opt/runner-deps/installed.txt; \
+        ;; \
+      npm) \
+        apt-get update && apt-get install -y --no-install-recommends nodejs npm && rm -rf /var/lib/apt/lists/*; \
+        printf '{"name":"runner-deps","dependencies":{"%s":"%s"}}\n' "${PACKAGE_NAME}" "${PACKAGE_VERSION}" > /opt/runner-deps/package.json; \
+        echo "curated-from-artifactory: ${PACKAGE_NAME}@${PACKAGE_VERSION}" >> /opt/runner-deps/installed.txt; \
+        ;; \
+      maven) \
+        apt-get update && apt-get install -y --no-install-recommends openjdk-17-jre-headless && rm -rf /var/lib/apt/lists/*; \
+        echo "curated-from-artifactory: ${PACKAGE_NAME}:${PACKAGE_VERSION}" >> /opt/runner-deps/installed.txt; \
+        ;; \
+      nuget) \
+        echo "curated-from-artifactory: ${PACKAGE_NAME}@${PACKAGE_VERSION}" >> /opt/runner-deps/installed.txt; \
+        ;; \
+      cargo) \
+        echo "curated-from-artifactory: ${PACKAGE_NAME}@${PACKAGE_VERSION}" >> /opt/runner-deps/installed.txt; \
+        ;; \
+      *) \
+        echo "Unsupported ecosystem: ${ECOSYSTEM}" >&2; exit 1; \
+        ;; \
+    esac
+
+WORKDIR /home/runner
+CMD ["bash", "-lc", "cat /opt/runner-deps/installed.txt && sleep infinity"]

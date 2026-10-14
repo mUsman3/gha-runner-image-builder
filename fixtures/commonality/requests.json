@@ -1,0 +1,4 @@
+{
+  "threshold": 5,
+  "note": "Commonality is derived from requested_by on each package in artifactory/packages.json. This file documents the POC default threshold."
+}

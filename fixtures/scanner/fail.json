@@ -1,0 +1,14 @@
+{
+  "status": "fail",
+  "findings": [
+    {
+      "severity": "CRITICAL",
+      "id": "CVE-POC-0001",
+      "package": "demo-vulnerable-lib",
+      "version": "0.0.1",
+      "description": "Mock critical finding for POC scan-failure demos."
+    }
+  ],
+  "scanner": "poc-mock-scanner",
+  "policy": "block-critical"
+}

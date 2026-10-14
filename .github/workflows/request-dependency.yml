@@ -1,0 +1,275 @@
+name: Request Runner Dependency
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_type:
+        description: package (library) or runtime (language version)
+        type: choice
+        options: [package, runtime]
+        required: true
+      ecosystem:
+        description: Package ecosystem / runtime family
+        type: choice
+        options: [pip, npm, maven, nuget, cargo]
+        required: true
+      name:
+        description: Package or runtime name (e.g. requests, python)
+        type: string
+        required: true
+      version:
+        description: Semver-ish version (e.g. 2.31.0)
+        type: string
+        required: true
+      app_id:
+        description: Application ID for ownership and cost tracking
+        type: string
+        required: true
+      ritm_number:
+        description: Optional ServiceNow RITM (blank for manual runs)
+        type: string
+        required: false
+        default: ""
+      force_scan_fail:
+        description: Force mock security scan to fail (demo)
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  REPO_ROOT: ${{ github.workspace }}
+  SERVICENOW_STUB: "1"
+  ARTIFACTORY_MODE: fixture
+  COMMONALITY_THRESHOLD: "5"
+
+jobs:
+  validate:
+    name: Validate inputs
+    runs-on: ubuntu-latest
+    outputs:
+      request_id: ${{ steps.validate.outputs.request_id }}
+      request_id_short: ${{ steps.validate.outputs.request_id_short }}
+      app_owner: ${{ steps.validate.outputs.app_owner }}
+      valid: ${{ steps.validate.outputs.valid }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate
+        id: validate
+        env:
+          REQUEST_TYPE: ${{ inputs.request_type }}
+          ECOSYSTEM: ${{ inputs.ecosystem }}
+          NAME: ${{ inputs.name }}
+          VERSION: ${{ inputs.version }}
+          APP_ID: ${{ inputs.app_id }}
+          RITM_NUMBER: ${{ inputs.ritm_number }}
+        run: |
+          chmod +x scripts/*.sh scripts/lib/*.sh
+          ./scripts/validate_inputs.sh
+
+  runtime:
+    name: Runtime lookup
+    needs: validate
+    if: ${{ inputs.request_type == 'runtime' }}
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.lookup.outputs.result }}
+      status: ${{ steps.lookup.outputs.status }}
+      curation_url: ${{ steps.lookup.outputs.curation_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lookup runtime
+        id: lookup
+        env:
+          ECOSYSTEM: ${{ inputs.ecosystem }}
+          NAME: ${{ inputs.name }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          chmod +x scripts/*.sh scripts/lib/*.sh
+          ./scripts/runtime_lookup.sh
+
+      - name: Report runtime status
+        env:
+          STATUS: ${{ steps.lookup.outputs.status }}
+          MESSAGE: "Runtime request finished with result=${{ steps.lookup.outputs.result }}"
+          RITM_NUMBER: ${{ inputs.ritm_number }}
+          REQUEST_ID: ${{ needs.validate.outputs.request_id }}
+          APP_ID: ${{ inputs.app_id }}
+          CURATION_URL: ${{ steps.lookup.outputs.curation_url }}
+        run: ./scripts/report_status.sh
+
+      - name: Upload status artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-status-${{ needs.validate.outputs.request_id_short }}
+          path: .poc-output/
+          if-no-files-found: ignore
+
+  package-check:
+    name: Artifactory check
+    needs: validate
+    if: ${{ inputs.request_type == 'package' }}
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.artifactory.outputs.present }}
+      status: ${{ steps.artifactory.outputs.status }}
+      is_common: ${{ steps.artifactory.outputs.is_common }}
+      curation_url: ${{ steps.artifactory.outputs.curation_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Artifactory
+        id: artifactory
+        env:
+          ECOSYSTEM: ${{ inputs.ecosystem }}
+          NAME: ${{ inputs.name }}
+          VERSION: ${{ inputs.version }}
+          APP_ID: ${{ inputs.app_id }}
+        run: |
+          chmod +x scripts/*.sh scripts/lib/*.sh
+          ./scripts/check_artifactory.sh
+
+      - name: Report curation hand-off
+        if: ${{ steps.artifactory.outputs.present == 'false' }}
+        env:
+          STATUS: awaiting_curation
+          MESSAGE: "Package not in Artifactory. Developer must raise a curation request before the image can be built."
+          RITM_NUMBER: ${{ inputs.ritm_number }}
+          REQUEST_ID: ${{ needs.validate.outputs.request_id }}
+          APP_ID: ${{ inputs.app_id }}
+          CURATION_URL: ${{ steps.artifactory.outputs.curation_url }}
+        run: ./scripts/report_status.sh
+
+      - name: Upload status artifacts
+        if: ${{ steps.artifactory.outputs.present == 'false' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: curation-status-${{ needs.validate.outputs.request_id_short }}
+          path: .poc-output/
+          if-no-files-found: ignore
+
+  build-and-publish:
+    name: Build scan push deploy
+    needs: [validate, package-check]
+    if: ${{ inputs.request_type == 'package' && needs.package-check.outputs.present == 'true' }}
+    runs-on: ubuntu-latest
+    environment: image-publish
+    outputs:
+      image_tag: ${{ steps.build.outputs.image_tag }}
+      remote_tag: ${{ steps.push.outputs.remote_tag }}
+      runs_on: ${{ steps.deploy.outputs.runs_on }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build custom image
+        id: build
+        env:
+          ECOSYSTEM: ${{ inputs.ecosystem }}
+          NAME: ${{ inputs.name }}
+          VERSION: ${{ inputs.version }}
+          APP_ID: ${{ inputs.app_id }}
+          REQUEST_ID: ${{ needs.validate.outputs.request_id }}
+          REQUEST_ID_SHORT: ${{ needs.validate.outputs.request_id_short }}
+          BASE_IMAGE: ubuntu:22.04
+        run: |
+          chmod +x scripts/*.sh scripts/lib/*.sh
+          ./scripts/build_custom_image.sh
+
+      - name: Security scan
+        id: scan
+        env:
+          IMAGE_TAG: ${{ steps.build.outputs.image_tag }}
+          FORCE_SCAN_FAIL: ${{ inputs.force_scan_fail }}
+        run: ./scripts/scan_image.sh
+
+      - name: Push image (mock)
+        id: push
+        env:
+          IMAGE_TAG: ${{ steps.build.outputs.image_tag }}
+          APP_ID: ${{ inputs.app_id }}
+        run: ./scripts/push_image.sh
+
+      - name: Deploy ARC scale set (mock)
+        id: deploy
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          IMAGE_TAG: ${{ steps.build.outputs.image_tag }}
+          REMOTE_TAG: ${{ steps.push.outputs.remote_tag }}
+          REQUEST_ID: ${{ needs.validate.outputs.request_id }}
+        run: ./scripts/deploy_scale_set.sh
+
+      - name: Report done
+        env:
+          STATUS: completed
+          MESSAGE: "Custom runner image ready. Use the runs-on label below in your workflows."
+          RITM_NUMBER: ${{ inputs.ritm_number }}
+          REQUEST_ID: ${{ needs.validate.outputs.request_id }}
+          APP_ID: ${{ inputs.app_id }}
+          IMAGE_TAG: ${{ steps.push.outputs.remote_tag }}
+          RUNS_ON: ${{ steps.deploy.outputs.runs_on }}
+        run: ./scripts/report_status.sh
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-${{ needs.validate.outputs.request_id_short }}
+          path: .poc-output/
+          if-no-files-found: ignore
+
+  notify-servicenow:
+    name: ServiceNow write-back
+    needs: [validate, runtime, package-check, build-and-publish]
+    if: ${{ always() && inputs.ritm_number != '' && needs.validate.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compose final RITM note
+        env:
+          RITM_NUMBER: ${{ inputs.ritm_number }}
+          REQUEST_ID: ${{ needs.validate.outputs.request_id }}
+          APP_ID: ${{ inputs.app_id }}
+          REQUEST_TYPE: ${{ inputs.request_type }}
+          RUNTIME_STATUS: ${{ needs.runtime.outputs.status }}
+          PACKAGE_STATUS: ${{ needs.package-check.outputs.status }}
+          RUNS_ON: ${{ needs.build-and-publish.outputs.runs_on }}
+          IMAGE_TAG: ${{ needs.build-and-publish.outputs.remote_tag }}
+          CURATION_URL: ${{ needs.package-check.outputs.curation_url || needs.runtime.outputs.curation_url }}
+        run: |
+          chmod +x scripts/*.sh scripts/lib/*.sh
+          if [[ "${REQUEST_TYPE}" == "runtime" ]]; then
+            STATUS="${RUNTIME_STATUS:-unknown}"
+            MESSAGE="Runtime path finished with status=${STATUS}"
+          elif [[ "${PACKAGE_STATUS}" == "awaiting_curation" ]]; then
+            STATUS="awaiting_curation"
+            MESSAGE="Package awaiting curation"
+          elif [[ -n "${RUNS_ON}" ]]; then
+            STATUS="completed"
+            MESSAGE="Custom image published; runs-on=${RUNS_ON}"
+          else
+            STATUS="failed_or_incomplete"
+            MESSAGE="Request did not complete successfully"
+          fi
+          export STATUS MESSAGE
+          ./scripts/report_status.sh
+
+      - name: Upload ServiceNow stub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: servicenow-${{ inputs.ritm_number }}
+          path: .poc-output/
+          if-no-files-found: ignore

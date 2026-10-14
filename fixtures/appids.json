@@ -1,0 +1,34 @@
+{
+  "appids": [
+    {
+      "id": "APP-1001",
+      "owner": "payments-team",
+      "name": "Payments API"
+    },
+    {
+      "id": "APP-1002",
+      "owner": "platform-team",
+      "name": "Platform Tools"
+    },
+    {
+      "id": "APP-1003",
+      "owner": "data-team",
+      "name": "Data Pipelines"
+    },
+    {
+      "id": "APP-1004",
+      "owner": "mobile-team",
+      "name": "Mobile Backend"
+    },
+    {
+      "id": "APP-1005",
+      "owner": "risk-team",
+      "name": "Risk Engine"
+    },
+    {
+      "id": "APP-2001",
+      "owner": "legacy-team",
+      "name": "Legacy Batch"
+    }
+  ]
+}

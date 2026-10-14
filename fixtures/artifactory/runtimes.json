@@ -1,0 +1,51 @@
+{
+  "golden_image": [
+    {
+      "ecosystem": "pip",
+      "name": "python",
+      "version": "3.11.0"
+    },
+    {
+      "ecosystem": "pip",
+      "name": "python",
+      "version": "3.12.0"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "node",
+      "version": "20.11.0"
+    },
+    {
+      "ecosystem": "maven",
+      "name": "java",
+      "version": "17.0.9"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "dotnet",
+      "version": "8.0.100"
+    }
+  ],
+  "artifactory": [
+    {
+      "ecosystem": "pip",
+      "name": "python",
+      "version": "3.13.0"
+    },
+    {
+      "ecosystem": "maven",
+      "name": "java",
+      "version": "21.0.2"
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "dotnet",
+      "version": "9.0.100"
+    },
+    {
+      "ecosystem": "npm",
+      "name": "node",
+      "version": "22.0.0"
+    }
+  ]
+}

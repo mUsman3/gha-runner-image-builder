@@ -1,0 +1,6 @@
+{
+  "status": "pass",
+  "findings": [],
+  "scanner": "poc-mock-scanner",
+  "policy": "block-critical"
+}

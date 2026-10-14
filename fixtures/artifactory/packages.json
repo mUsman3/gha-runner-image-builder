@@ -1,0 +1,40 @@
+{
+  "packages": [
+    {
+      "ecosystem": "pip",
+      "name": "requests",
+      "version": "2.31.0",
+      "requested_by": ["APP-1001", "APP-1002", "APP-1003", "APP-1004", "APP-1005"]
+    },
+    {
+      "ecosystem": "pip",
+      "name": "httpx",
+      "version": "0.27.0",
+      "requested_by": ["APP-1001"]
+    },
+    {
+      "ecosystem": "npm",
+      "name": "lodash",
+      "version": "4.17.21",
+      "requested_by": ["APP-1002", "APP-1004"]
+    },
+    {
+      "ecosystem": "maven",
+      "name": "com.google.guava:guava",
+      "version": "33.0.0-jre",
+      "requested_by": ["APP-1003"]
+    },
+    {
+      "ecosystem": "nuget",
+      "name": "Newtonsoft.Json",
+      "version": "13.0.3",
+      "requested_by": ["APP-2001"]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "serde",
+      "version": "1.0.197",
+      "requested_by": ["APP-1005"]
+    }
+  ]
+}
